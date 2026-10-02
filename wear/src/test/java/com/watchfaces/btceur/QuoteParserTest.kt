@@ -21,7 +21,7 @@ class QuoteParserTest {
 
         val quote = QuoteParser.parseKraken(body, fetchedAtEpochMs = 1_000L)
 
-        assertEquals(97510.5, quote.priceEur, 0.001)
+        assertEquals(97510.5, quote.price, 0.001)
         assertEquals(1.5734375, quote.changePercent!!, 0.0001)
         assertEquals(1_000L, quote.fetchedAtEpochMs)
     }
@@ -32,7 +32,7 @@ class QuoteParserTest {
 
         val quote = QuoteParser.parseCoinbase(body, fetchedAtEpochMs = 2_000L)
 
-        assertEquals(97000.10, quote.priceEur, 0.001)
+        assertEquals(97000.10, quote.price, 0.001)
         assertNull(quote.changePercent)
     }
 }

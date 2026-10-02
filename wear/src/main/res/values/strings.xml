@@ -1,7 +1,6 @@
 <resources>
-    <string name="app_name">BTC/EUR</string>
-    <string name="complication_label">BTC/EUR</string>
-    <string name="btc">BTC</string>
-    <string name="pair_label">BTC/EUR</string>
-    <string name="price_content_description">Bitcoin %1$s Euro</string>
+    <string name="app_name">Bitcoin</string>
+    <string name="complication_eur">BTC/EUR</string>
+    <string name="complication_usd">BTC/USD</string>
+    <string name="price_content_description">Bitcoin %1$s %2$s</string>
 </resources>

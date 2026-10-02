@@ -16,7 +16,7 @@ object QuoteParser {
         val last = ticker.getJSONArray("c").getString(0).toDouble()
         val open = ticker.optString("o").toDoubleOrNull()
         return Quote(
-            priceEur = last,
+            price = last,
             changePercent = percentChange(last, open),
             fetchedAtEpochMs = fetchedAtEpochMs,
         )
@@ -25,7 +25,7 @@ object QuoteParser {
     fun parseCoinbase(body: String, fetchedAtEpochMs: Long): Quote {
         val amount = JSONObject(body).getJSONObject("data").getString("amount").toDouble()
         return Quote(
-            priceEur = amount,
+            price = amount,
             changePercent = null,
             fetchedAtEpochMs = fetchedAtEpochMs,
         )

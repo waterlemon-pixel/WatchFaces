@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -15,7 +16,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.material.Chip
@@ -24,6 +24,8 @@ import androidx.wear.compose.material.Scaffold
 import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.TimeText
 import androidx.wear.watchface.complications.datasource.ComplicationDataSourceUpdateRequester
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
@@ -32,16 +34,17 @@ import java.util.Locale
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val repository = PriceRepository(applicationContext)
-        val updateRequester = ComplicationDataSourceUpdateRequester.create(
-            this,
-            ComponentName(this, BtcEurComplicationService::class.java),
-        )
+        val eurRepository = PriceRepository(applicationContext, FiatCurrency.EUR)
+        val usdRepository = PriceRepository(applicationContext, FiatCurrency.USD)
+        val updateRequesters = listOf(BtcEurComplicationService::class.java, BtcUsdComplicationService::class.java)
+            .map { service ->
+                ComplicationDataSourceUpdateRequester.create(this, ComponentName(this, service))
+            }
         setContent {
             var state by remember { mutableStateOf(PriceUiState(loading = true)) }
             val scope = rememberCoroutineScope()
             LaunchedEffect(Unit) {
-                state = repository.load(force = false).toUiState()
+                state = loadBoth(eurRepository, usdRepository, force = false)
             }
             MaterialTheme {
                 PriceScreen(
@@ -50,9 +53,8 @@ class MainActivity : ComponentActivity() {
                         if (state.loading) return@PriceScreen
                         state = state.copy(loading = true)
                         scope.launch {
-                            val result = repository.load(force = true)
-                            updateRequester.requestUpdateAll()
-                            state = result.toUiState()
+                            state = loadBoth(eurRepository, usdRepository, force = true)
+                            updateRequesters.forEach { it.requestUpdateAll() }
                         }
                     },
                 )
@@ -62,27 +64,37 @@ class MainActivity : ComponentActivity() {
 }
 
 private data class PriceUiState(
-    val priceText: String = "–",
-    val changeText: String = "",
-    val changePositive: Boolean? = null,
+    val eurText: String = "–",
+    val usdText: String = "–",
     val statusText: String = "",
     val loading: Boolean = false,
 )
 
-private fun LoadResult.toUiState(): PriceUiState {
-    val time = quote?.let {
-        DateFormat.getTimeInstance(DateFormat.SHORT, Locale.GERMANY).format(Date(it.fetchedAtEpochMs))
+private suspend fun loadBoth(
+    eurRepository: PriceRepository,
+    usdRepository: PriceRepository,
+    force: Boolean,
+): PriceUiState = coroutineScope {
+    val eur = async { eurRepository.load(force) }
+    val usd = async { usdRepository.load(force) }
+    toUiState(eur.await(), usd.await())
+}
+
+private fun toUiState(eur: LoadResult, usd: LoadResult): PriceUiState {
+    val quotes = listOfNotNull(eur.quote, usd.quote)
+    val time = quotes.maxOfOrNull { it.fetchedAtEpochMs }?.let {
+        DateFormat.getTimeInstance(DateFormat.SHORT, Locale.GERMANY).format(Date(it))
     }
+    val failed = eur.networkFailed || usd.networkFailed
     val status = when {
-        quote == null -> "Kein Kurs"
-        networkFailed && time != null -> "Zuletzt $time"
+        quotes.isEmpty() -> "Kein Kurs"
+        failed && time != null -> "Zuletzt $time"
         time != null -> "Stand $time"
         else -> ""
     }
     return PriceUiState(
-        priceText = quote?.let { PriceFormat.eurosWithSymbol(it.priceEur) } ?: "–",
-        changeText = quote?.changePercent?.let { "heute ${PriceFormat.change(it)}" }.orEmpty(),
-        changePositive = quote?.changePercent?.let { it >= 0 },
+        eurText = eur.quote?.let { PriceFormat.withSymbol(it.price, FiatCurrency.EUR) } ?: "–",
+        usdText = usd.quote?.let { PriceFormat.withSymbol(it.price, FiatCurrency.USD) } ?: "–",
         statusText = status,
         loading = false,
     )
@@ -98,27 +110,8 @@ private fun PriceScreen(
             modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            item {
-                Text(
-                    text = "BTC/EUR",
-                    style = MaterialTheme.typography.title3,
-                )
-            }
-            item {
-                Text(
-                    text = state.priceText,
-                    modifier = Modifier.padding(vertical = 4.dp),
-                    style = MaterialTheme.typography.display3,
-                )
-            }
-            item {
-                val color = when (state.changePositive) {
-                    true -> Color(0xFF3DDC97)
-                    false -> Color(0xFFFF6B6B)
-                    null -> MaterialTheme.colors.onSurface
-                }
-                Text(text = state.changeText, color = color)
-            }
+            item { PairPrice(label = "BTC/EUR", price = state.eurText) }
+            item { PairPrice(label = "BTC/USD", price = state.usdText) }
             item {
                 Text(
                     text = state.statusText,
@@ -133,5 +126,17 @@ private fun PriceScreen(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun PairPrice(label: String, price: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(text = label, style = MaterialTheme.typography.caption2)
+        Text(
+            text = price,
+            modifier = Modifier.padding(bottom = 8.dp),
+            style = MaterialTheme.typography.title2,
+        )
     }
 }

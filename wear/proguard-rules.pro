@@ -1,1 +1,2 @@
 -keep class com.watchfaces.btceur.BtcEurComplicationService { *; }
+-keep class com.watchfaces.btceur.BtcUsdComplicationService { *; }
